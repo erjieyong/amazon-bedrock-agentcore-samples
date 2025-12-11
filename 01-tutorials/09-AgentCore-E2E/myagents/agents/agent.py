@@ -6,6 +6,10 @@ from boto3.session import Session
 from strands import Agent
 from strands.models import BedrockModel
 
+from tools.retrieval import get_technical_support, get_product_info
+from tools.web_search import web_search
+from tools.return_policy import get_return_policy
+
 # # Enable detailed debug logs for the Strands SDK
 # import logging
 # logging.getLogger("strands").setLevel(logging.DEBUG)
@@ -47,27 +51,29 @@ model = BedrockModel(
 )
 
 # Create the customer support agent with all tools from directory
-agent = Agent(
-    model=model,
-    load_tools_from_directory=True,
-    system_prompt=SYSTEM_PROMPT,
-    # callback_handler = None # to disable console output
-)
-# print("Loaded tools:", agent.tool_names)
-# print("Tools configs:", agent.tool_registry.get_all_tools_config())
-
-# # Create the customer support agent with all tools from directory
 # agent = Agent(
 #     model=model,
-#     tools=[
-#         get_product_info,  # Tool 1: Simple product information lookup
-#         get_return_policy,  # Tool 2: Simple return policy lookup
-#         web_search,  # Tool 3: Access the web for updated information
-#         get_technical_support,  # Tool 4: Technical support & troubleshooting
-#     ],
+#     load_tools_from_directory=True,
 #     system_prompt=SYSTEM_PROMPT,
 #     # callback_handler = None # to disable console output
 # )
+
+# Module import approach
+agent = Agent(
+    model=model,
+    tools=[
+        get_product_info,  # Tool 1: Simple product information lookup
+        get_return_policy,  # Tool 2: Simple return policy lookup
+        web_search,  # Tool 3: Access the web for updated information
+        get_technical_support,  # Tool 4: Technical support & troubleshooting
+    ],
+    system_prompt=SYSTEM_PROMPT,
+    # callback_handler = None # to disable console output
+)
+
+print("Loaded tools:", agent.tool_names)
+print("Tools configs:", agent.tool_registry.get_all_tools_config())
+
 
 if __name__ == "__main__":
     # - Note that for this to work properly, you can only run `python -m agents.agent` from within myagents parent folder

@@ -1,6 +1,5 @@
 # ensure that you the knowledge base on aws set up first
 # Import libraries
-import os
 from boto3.session import Session
 
 from strands import Agent

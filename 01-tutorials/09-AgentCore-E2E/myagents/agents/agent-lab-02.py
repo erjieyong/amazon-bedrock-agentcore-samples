@@ -1,6 +1,10 @@
 # This agent is built on top of the previous agent-lab-0*.py. It incorpoated with learnings from the respective labs
 
+#lab 01
 # ensure that you the knowledge base on aws set up first
+#lab 02
+# ensure that you have the memory manager set up first and get the memory_id
+
 # Import libraries
 from boto3.session import Session
 
@@ -10,6 +14,11 @@ from strands.models import BedrockModel
 from tools.retrieval import get_technical_support, get_product_info
 from tools.web_search import web_search
 from tools.return_policy import get_return_policy
+
+import uuid
+
+from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
+from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
 
 # # Enable detailed debug logs for the Strands SDK
 # import logging
@@ -24,6 +33,22 @@ from tools.return_policy import get_return_policy
 # common utilities
 boto_session = Session()
 region = boto_session.region_name
+
+memory_id = "CustomerSupportMemory-UeB3D6Ahia" # global level memory resource database
+ACTOR_ID = "customer_001" # user level. helps to distinguish memory between different users
+session_id = uuid.uuid4() # session level. helps to distinguish memory between different sessions. 1 actor could have multiple sessions.
+# Memory > Actor > Session
+
+
+memory_config = AgentCoreMemoryConfig(
+        memory_id=memory_id,
+        session_id=str(session_id),
+        actor_id=ACTOR_ID,
+        retrieval_config={
+            "support/customer/{actorId}/semantic": RetrievalConfig(top_k=3, relevance_score=0.2),
+            "support/customer/{actorId}/preferences": RetrievalConfig(top_k=3, relevance_score=0.2)
+        }
+    )
 
 
 ### set up agent ###
@@ -62,6 +87,7 @@ model = BedrockModel(
 # Module import approach
 agent = Agent(
     model=model,
+    session_manager=AgentCoreMemorySessionManager(memory_config, region),
     tools=[
         get_product_info,  # Tool 1: Simple product information lookup
         get_return_policy,  # Tool 2: Simple return policy lookup
@@ -81,20 +107,34 @@ if __name__ == "__main__":
     # - If agent.py is outside and within myagents parent folder (ie not within a agents folder), you can run `python agent.py`
     # - All these is so that the python file within each sub folders (e.g. tools/return_policy.py can reference to libraries.debug_tools)
 
-    agent("What is the latest iphone, its information, its return policy, and how do i setup a phone?")
+    # agent("What is the latest iphone, its information, its return policy, and how do i setup a phone?")
 
-    # check return policy
+    # # check return policy
+    # print("-" * 50)
+    # res = agent("What's the return policy for my thinkpad X1 Carbon?") 
+
+    # # check technical support
+    # print("-" * 50)
+    # agent("My laptop won't turn on, what should I check?")
+
+    # # check product info
+    # print("-" * 50)
+    # agent("What is the specs of the phone you are selling?")
+
+    # check memory
     print("-" * 50)
-    res = agent("What's the return policy for my thinkpad X1 Carbon?") 
+    response1 = agent("Which headphones would you recommend?")
 
-    # check technical support
+    # check memory
     print("-" * 50)
-    agent("My laptop won't turn on, what should I check?")
+    agent("What is my preferred laptop brand and requirements?")
 
-    # check product info
+    # check memory, 
     print("-" * 50)
-    agent("What is the specs of the phone you are selling?")
-
+    agent("What do you know about my preferences for phone?")
     # check web search
     print("-" * 50)
-    agent("What is the latest samsung and iphone models?")
+    agent("What is the latest iphone models?")
+    # check memory
+    print("-" * 50)
+    agent("What is my preferred phone brand and requirements?")

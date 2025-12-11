@@ -70,30 +70,24 @@ agent = Agent(
 # )
 
 if __name__ == "__main__":
-    # run `python agent.py` in myagents folder
+    # - Note that for this to work properly, you can only run `python -m agents.agent` from within myagents parent folder
+    # - If agent.py is outside and within myagents parent folder (ie not within a agents folder), you can run `python agent.py`
+    # - All these is so that the python file within each sub folders (e.g. tools/return_policy.py can reference to libraries.debug_tools)
 
     agent("What is the latest iphone, its information, its return policy, and how do i setup a phone?")
 
-    # # check return policy
-    # print("-" * 50)
-    # res = agent("What's the return policy for my thinkpad X1 Carbon?") 
-    # print(res.metrics.get_summary())
-    # print(agent.messages)
+    # check return policy
+    print("-" * 50)
+    res = agent("What's the return policy for my thinkpad X1 Carbon?") 
 
-    # # check technical support
-    # print("-" * 50)
-    # agent("My laptop won't turn on, what should I check?")
-    # print(res.metrics.get_summary())
-    # print(agent.messages)
+    # check technical support
+    print("-" * 50)
+    agent("My laptop won't turn on, what should I check?")
 
-    # # check product info
-    # print("-" * 50)
-    # agent("What is the specs of the phone you are selling?")
-    # print(res.metrics.get_summary())
-    # print(agent.messages)
+    # check product info
+    print("-" * 50)
+    agent("What is the specs of the phone you are selling?")
 
-    # # check web search
-    # print("-" * 50)
-    # agent("What is the latest news in singapore?")
-    # print(res.metrics.get_summary())
-    # print(agent.messages)
+    # check web search
+    print("-" * 50)
+    agent("What is the latest samsung and iphone models?")

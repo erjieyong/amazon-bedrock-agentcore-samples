@@ -4,12 +4,16 @@
 # ensure that you the knowledge base on aws set up first
 #lab 02
 # ensure that you have the memory manager set up first and get the memory_id
+# lab 03
+# ensure that you have the gateway created and the tools set up
 
 # Import libraries
 from boto3.session import Session
 
 from strands import Agent
 from strands.models import BedrockModel
+from strands.tools.mcp import MCPClient
+from mcp.client.streamable_http import streamablehttp_client
 
 from tools.retrieval import get_technical_support, get_product_info
 from tools.web_search import web_search
@@ -19,6 +23,8 @@ import uuid
 
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+
+from libraries.aws import get_or_create_cognito_pool
 
 # # Enable detailed debug logs for the Strands SDK
 # import logging
@@ -30,10 +36,15 @@ from bedrock_agentcore.memory.integrations.strands.session_manager import AgentC
 #     handlers=[logging.StreamHandler()]
 # )
 
-# common utilities
+# ------------------------------------------------------------------
+# Common Utilities
+# ------------------------------------------------------------------
 boto_session = Session()
 region = boto_session.region_name
 
+# ------------------------------------------------------------------
+# Memory Setup
+# ------------------------------------------------------------------
 memory_id = "CustomerSupportMemory-UeB3D6Ahia" # global level memory resource database
 ACTOR_ID = "customer_001" # user level. helps to distinguish memory between different users
 session_id = uuid.uuid4() # session level. helps to distinguish memory between different sessions. 1 actor could have multiple sessions.
@@ -50,8 +61,26 @@ memory_config = AgentCoreMemoryConfig(
         }
     )
 
+# ------------------------------------------------------------------
+# Agentcore Tool Connection
+# ------------------------------------------------------------------
+gateway_url = "https://customersupport-gw-mnyzzral2q.gateway.bedrock-agentcore.ap-southeast-1.amazonaws.com/mcp"
+try:
+    cognito_config = get_or_create_cognito_pool(refresh_token=True)
+    print(cognito_config)
+    mcp_client = MCPClient(
+        lambda: streamablehttp_client(
+            gateway_url,
+            headers={"Authorization": f"Bearer {cognito_config['bearer_token']}"},
+        )
+    )
+except Exception as e:
+    print(f"❌ Error getting cognito config: {str(e)}")
+    exit(1)
 
-### set up agent ###
+# ------------------------------------------------------------------
+# Agent Setup
+# ------------------------------------------------------------------
 SYSTEM_PROMPT = """You are a helpful and professional customer support assistant for an electronics e-commerce company.
 Your role is to:
 - Provide accurate information using the tools available to you
@@ -63,8 +92,9 @@ Your role is to:
 You have access to the following tools:
 1. get_return_policy() - For warranty and return policy questions
 2. get_product_info() - To get information about a specific product
-3. web_search() - To access current technical documentation, or for updated information. 
-4. get_technical_support() - For troubleshooting issues, setup guides, maintenance tips, and detailed technical assistance
+3. get_technical_support() - For troubleshooting issues, setup guides, maintenance tips, and detailed technical assistance
+4. web_search() - To access current technical documentation, or for updated information.
+5. check_warranty_status() - To check the warranty status of a product using its serial number and optionally verify via email 
 For any technical problems, setup questions, or maintenance concerns, always use the get_technical_support() tool as it contains our comprehensive technical documentation and step-by-step guides.
 
 Always use the appropriate tool to get accurate, up-to-date information rather than making assumptions about electronic products or specifications."""
@@ -85,21 +115,42 @@ model = BedrockModel(
 # )
 
 # Module import approach
-agent = Agent(
-    model=model,
-    session_manager=AgentCoreMemorySessionManager(memory_config, region),
-    tools=[
-        get_product_info,  # Tool 1: Simple product information lookup
-        get_return_policy,  # Tool 2: Simple return policy lookup
-        web_search,  # Tool 3: Access the web for updated information
-        get_technical_support,  # Tool 4: Technical support & troubleshooting
-    ],
-    system_prompt=SYSTEM_PROMPT,
-    # callback_handler = None # to disable console output
-)
+# agent = Agent(
+#     model=model,
+#     session_manager=AgentCoreMemorySessionManager(memory_config, region),
+#     tools=[
+#         get_product_info,  # Tool 1: Simple product information lookup
+#         get_return_policy,  # Tool 2: Simple return policy lookup
+#         web_search,  # Tool 3: Access the web for updated information
+#         get_technical_support,  # Tool 4: Technical support & troubleshooting
+#     ],
+#     system_prompt=SYSTEM_PROMPT,
+#     # callback_handler = None # to disable console output
+# )
 
-print("Loaded tools:", agent.tool_names)
-print("Tools configs:", agent.tool_registry.get_all_tools_config())
+# MCP Client approach
+def create_agent(prompt):
+    try:
+        with mcp_client:
+            tools = [
+                get_product_info,
+                get_return_policy,
+                get_technical_support,
+            ] + mcp_client.list_tools_sync()
+
+            # Create the customer support agent
+            agent = Agent(
+                model=model,
+                session_manager=AgentCoreMemorySessionManager(memory_config, region),
+                tools=tools,
+                system_prompt=SYSTEM_PROMPT,
+            )
+            print("Loaded tools:", agent.tool_names)
+            # print("Tools configs:", agent.tool_registry.get_all_tools_config())
+            response = agent(prompt)
+            return response
+    except Exception as e:
+        raise e
 
 
 if __name__ == "__main__":
@@ -107,34 +158,36 @@ if __name__ == "__main__":
     # - If agent.py is outside and within myagents parent folder (ie not within a agents folder), you can run `python agent.py`
     # - All these is so that the python file within each sub folders (e.g. tools/return_policy.py can reference to libraries.debug_tools)
 
-    # agent("What is the latest iphone, its information, its return policy, and how do i setup a phone?")
+    test_prompts = [
+        # "What is the latest iphone, its information, its return policy, and how do i setup a phone?", # check multi tool call
+        # "What's the return policy for my thinkpad X1 Carbon?", # check return policy call
+        # "My laptop won't turn on, what should I check?", # check technical support call
+        # "What is the specs of the phone you are selling?", # check product info call    
+        # "Which headphones would you recommend?", # check memory
+        # "What is my preferred laptop brand and requirements?", # check memory
+        # "What do you know about my preferences for phone?", # check memory
+        # "What is the latest iphone models?", # check web search
+        # "What is my preferred phone brand and requirements?",
+        # "List all of your tools",
+        # "I bought an iphone 14 last month. I don't like it because it heats up. How do I solve it?",
+        "I have a Gaming Console Pro device , I want to check my warranty status, warranty serial number is MNO33333333.",
+        # "What are the warranty support guidelines?",
+        # "How can I fix Lenovo Thinkpad with a blue screen",
+        "Tell me detailed information about the technical documentation on installing a new CPU",
+    ]
 
-    # # check return policy
-    # print("-" * 50)
-    # res = agent("What's the return policy for my thinkpad X1 Carbon?") 
+    # Function to test the agent
+    def test_agent_responses(prompts):
+        for i, prompt in enumerate(prompts, 1):
+            print(f"\nTest Case {i}: {prompt}")
+            print("-" * 50)
+            try:
+                response = create_agent(prompt)
+                # print(response)
+            except Exception as e:
+                print(f"Error: {str(e)}")
+            print("-" * 50)
 
-    # # check technical support
-    # print("-" * 50)
-    # agent("My laptop won't turn on, what should I check?")
 
-    # # check product info
-    # print("-" * 50)
-    # agent("What is the specs of the phone you are selling?")
-
-    # check memory
-    print("-" * 50)
-    response1 = agent("Which headphones would you recommend?")
-
-    # check memory
-    print("-" * 50)
-    agent("What is my preferred laptop brand and requirements?")
-
-    # check memory, 
-    print("-" * 50)
-    agent("What do you know about my preferences for phone?")
-    # check web search
-    print("-" * 50)
-    agent("What is the latest iphone models?")
-    # check memory
-    print("-" * 50)
-    agent("What is my preferred phone brand and requirements?")
+    # Run the tests
+    test_agent_responses(test_prompts)

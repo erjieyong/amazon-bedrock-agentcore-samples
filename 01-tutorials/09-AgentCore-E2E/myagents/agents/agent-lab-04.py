@@ -23,6 +23,9 @@ import uuid
 
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig, RetrievalConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+from bedrock_agentcore.runtime import (
+    BedrockAgentCoreApp,
+)
 
 from libraries.aws import get_or_create_cognito_pool
 
@@ -79,7 +82,7 @@ except Exception as e:
     exit(1)
 
 # ------------------------------------------------------------------
-# Agent Setup
+# Agentcore Runtime App Setup
 # ------------------------------------------------------------------
 SYSTEM_PROMPT = """You are a helpful and professional customer support assistant for an electronics e-commerce company.
 Your role is to:
@@ -128,66 +131,74 @@ model = BedrockModel(
 #     # callback_handler = None # to disable console output
 # )
 
-# MCP Client approach
-def create_agent(prompt):
-    try:
-        with mcp_client:
-            tools = [
-                get_product_info,
-                get_return_policy,
-                get_technical_support,
-            ] + mcp_client.list_tools_sync()
+# # MCP Client approach with local agent
+# def create_agent(prompt):
+#     try:
+#         with mcp_client:
+#             tools = [
+#                 get_product_info,
+#                 get_return_policy,
+#                 get_technical_support,
+#             ] + mcp_client.list_tools_sync()
 
-            # Create the customer support agent
-            agent = Agent(
-                model=model,
-                session_manager=AgentCoreMemorySessionManager(memory_config, region),
-                tools=tools,
-                system_prompt=SYSTEM_PROMPT,
-            )
-            print("Loaded tools:", agent.tool_names)
-            # print("Tools configs:", agent.tool_registry.get_all_tools_config())
-            response = agent(prompt)
-            return response
-    except Exception as e:
-        raise e
+#             # Create the customer support agent
+#             agent = Agent(
+#                 model=model,
+#                 session_manager=AgentCoreMemorySessionManager(memory_config, region),
+#                 tools=tools,
+#                 system_prompt=SYSTEM_PROMPT,
+#             )
+#             print("Loaded tools:", agent.tool_names)
+#             # print("Tools configs:", agent.tool_registry.get_all_tools_config())
+#             response = agent(prompt)
+#             return response
+#     except Exception as e:
+#         raise e
+
+# Entire agent to be hosted on agentcore runtime
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+async def invoke(payload, context=None):
+    """AgentCore Runtime entrypoint function"""
+    user_input = payload.get("prompt", "")
+
+    # Access request headers - handle None case
+    request_headers = context.request_headers or {}
+
+    # Get Client JTW token (aka bearer token or access token)
+    auth_header = request_headers.get("Authorization", "")
+
+    print(f"Auth header: {auth_header}")
+
+    if gateway_url and auth_header:
+        try:
+            with mcp_client:
+                tools = [
+                    get_product_info,
+                    get_return_policy,
+                    get_technical_support,
+                ] + mcp_client.list_tools_sync()
+
+                # Create the customer support agent
+                agent = Agent(
+                    model=model,
+                    session_manager=AgentCoreMemorySessionManager(memory_config, region),
+                    tools=tools,
+                    system_prompt=SYSTEM_PROMPT,
+                )
+                print("Loaded tools:", agent.tool_names)
+                # print("Tools configs:", agent.tool_registry.get_all_tools_config())
+                response = agent(user_input)
+                return response.message["content"][0]["text"]
+        except Exception as e:
+                print(f"MCP client error: {str(e)}")
+                return f"Error: {str(e)}"
+
 
 
 if __name__ == "__main__":
     # - Note that for this to work properly, you can only run `python -m agents.agent` from within myagents parent folder
     # - If agent.py is outside and within myagents parent folder (ie not within a agents folder), you can run `python agent.py`
     # - All these is so that the python file within each sub folders (e.g. tools/return_policy.py can reference to libraries.debug_tools)
-
-    test_prompts = [
-        # "What is the latest iphone, its information, its return policy, and how do i setup a phone?", # check multi tool call
-        # "What's the return policy for my thinkpad X1 Carbon?", # check return policy call
-        # "My laptop won't turn on, what should I check?", # check technical support call
-        # "What is the specs of the phone you are selling?", # check product info call    
-        # "Which headphones would you recommend?", # check memory
-        # "What is my preferred laptop brand and requirements?", # check memory
-        # "What do you know about my preferences for phone?", # check memory
-        # "What is the latest iphone models?", # check web search
-        # "What is my preferred phone brand and requirements?",
-        # "List all of your tools",
-        # "I bought an iphone 14 last month. I don't like it because it heats up. How do I solve it?",
-        "I have a Gaming Console Pro device , I want to check my warranty status, warranty serial number is MNO33333333.",
-        # "What are the warranty support guidelines?",
-        # "How can I fix Lenovo Thinkpad with a blue screen",
-        "Tell me detailed information about the technical documentation on installing a new CPU",
-    ]
-
-    # Function to test the agent
-    def test_agent_responses(prompts):
-        for i, prompt in enumerate(prompts, 1):
-            print(f"\nTest Case {i}: {prompt}")
-            print("-" * 50)
-            try:
-                response = create_agent(prompt)
-                # print(response)
-            except Exception as e:
-                print(f"Error: {str(e)}")
-            print("-" * 50)
-
-
-    # Run the tests
-    test_agent_responses(test_prompts)
+    app.run()

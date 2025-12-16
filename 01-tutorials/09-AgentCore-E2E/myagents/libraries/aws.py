@@ -15,7 +15,7 @@ def get_customer_support_secret():
     secrets_client = boto3.client("secretsmanager", region_name=region)
     try:
         response = secrets_client.get_secret_value(SecretId="customer_support_agent")
-        return response["SecretString"]
+        return json.loads(response["SecretString"])
     except Exception as e:
         print(f"❌ Error getting secret: {str(e)}")
         return None
@@ -52,8 +52,7 @@ def get_or_create_cognito_pool(refresh_token=False):
     cognito_client = boto3.client("cognito-idp", region_name=region)
     try:
         # check for existing cognito pool
-        cognito_config_str = get_customer_support_secret()
-        cognito_config = json.loads(cognito_config_str)
+        cognito_config = get_customer_support_secret()
         if refresh_token:
             cognito_config["bearer_token"] = reauthenticate_user(
                 cognito_config["client_id"], cognito_config["client_secret"]

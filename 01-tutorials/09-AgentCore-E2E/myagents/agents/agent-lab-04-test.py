@@ -131,6 +131,51 @@ def invoke_agentcore_agent(prompt, session_id, agent_arn=agent_arn, region=regio
         print(invoke_response.text[:500])
 
 # ------------------------------------------------------------------
+# Using AIOHTTP
+# ------------------------------------------------------------------
+import aiohttp
+import asyncio
+
+async def invoke_agentcore_agent_async(prompt, session_id, agent_arn=agent_arn, region=region, access_token=access_token):
+    # URL encode the agent ARN
+    escaped_agent_arn = urllib.parse.quote(agent_arn, safe='')
+
+    # Construct the URL
+    url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations?qualifier=DEFAULT"
+
+    # Set up headers
+    headers = {
+        "Authorization": f"Bearer {access_token['bearer_token']}",
+        # "X-Amzn-Trace-Id": "your-trace-id", 
+        "Content-Type": "application/json",
+        "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id": str(session_id)
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json={"prompt": prompt}) as response:
+            print(f"Status Code: {response.status}")
+            print(f"Response Headers: {dict(response.headers)}")
+
+            if response.status == 200:
+                print("\n--- Streaming Response ---")
+                async for line in response.content:
+                    if line:
+                        decoded_line = line.decode('utf-8').strip()
+                        if decoded_line.startswith("data: "):
+                            content = decoded_line[6:] # Remove 'data: ' prefix
+                            try:
+                                # Just print the raw line for visibility first
+                                print(f"{content}")
+                            except json.JSONDecodeError:
+                                print(f"Stream Line: {content}")
+            elif response.status >= 400:
+                print(f"Error Response ({response.status}):")
+                print(await response.text())
+            else:
+                print(f"Unexpected status code: {response.status}")
+                print((await response.text())[:500])
+
+# ------------------------------------------------------------------
 # Using websockets
 # ------------------------------------------------------------------
 
@@ -181,8 +226,13 @@ if __name__ == "__main__":
     # test_agent_responses(test_prompts, session_id)
 
     # Run the tests using standard http requests
-    for prompt in test_prompts:
-        invoke_agentcore_agent(prompt, session_id)
+    # for prompt in test_prompts:
+    #     invoke_agentcore_agent(prompt, session_id)
 
     # Run the tests using websockets
     # asyncio.run(main())
+
+    # Run the tests using AIOHTTP
+    for prompt in test_prompts:
+        asyncio.run(invoke_agentcore_agent_async(prompt, session_id))
+    

@@ -188,12 +188,18 @@ async def invoke(payload, context=None):
                     system_prompt=SYSTEM_PROMPT,
                 )
                 print("Loaded tools:", agent.tool_names)
-                # print("Tools configs:", agent.tool_registry.get_all_tools_config())
-                response = agent(user_input)
-                return response.message["content"][0]["text"]
+                
+                # Stream the response
+                stream = agent.stream_async(user_input)
+                async for event in stream:
+                    if "data" in event:
+                        yield event["data"] # Stream data chunks
+                    elif "message" in event:
+                        yield event["message"] # Stream message parts
+                        
         except Exception as e:
                 print(f"MCP client error: {str(e)}")
-                return f"Error: {str(e)}"
+                yield f"Error: {str(e)}"
 
 
 

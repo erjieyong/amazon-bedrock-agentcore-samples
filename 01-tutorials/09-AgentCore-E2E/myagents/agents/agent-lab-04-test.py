@@ -99,25 +99,35 @@ def invoke_agentcore_agent(prompt, session_id, agent_arn=agent_arn, region=regio
     invoke_response = requests.post(
         url,
         headers=headers,
-        data=json.dumps({"prompt": prompt})
+        data=json.dumps({"prompt": prompt}),
+        stream=True
     )
 
     # Print response in a safe manner
     print(f"Status Code: {invoke_response.status_code}")
     print(f"Response Headers: {dict(invoke_response.headers)}")
 
-    # Handle response based on status code
     if invoke_response.status_code == 200:
-        response_data = invoke_response.json()
-        print("Response JSON:")
-        print(json.dumps(response_data, indent=2))  
+        print("\n--- Streaming Response ---")
+        for line in invoke_response.iter_lines():
+            if line:
+                decoded_line = line.decode('utf-8')
+                if decoded_line.startswith("data: "):
+                    content = decoded_line[6:] # Remove 'data: ' prefix
+                    try:
+                        # Try to handle it as JSON if possible, otherwise print raw
+                        # In strands/agentcore, 'data' events usually are steps/objects, 'message' are strings
+                        # But here we are yielding raw objects which agentcore runtime wraps in SSE 'data: ...'
+                        
+                        # Just print the raw line for visibility first
+                        print(f"{content}")
+                    except json.JSONDecodeError:
+                        print(f"Stream Line: {content}")
     elif invoke_response.status_code >= 400:
         print(f"Error Response ({invoke_response.status_code}):")
-        error_data = invoke_response.json()
-        print(json.dumps(error_data, indent=2))
+        print(invoke_response.text)
     else:
         print(f"Unexpected status code: {invoke_response.status_code}")
-        print("Response text:")
         print(invoke_response.text[:500])
 
 # ------------------------------------------------------------------

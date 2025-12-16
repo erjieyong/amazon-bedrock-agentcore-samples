@@ -120,6 +120,29 @@ def invoke_agentcore_agent(prompt, session_id, agent_arn=agent_arn, region=regio
         print("Response text:")
         print(invoke_response.text[:500])
 
+# ------------------------------------------------------------------
+# Using websockets
+# ------------------------------------------------------------------
+
+from bedrock_agentcore.runtime import AgentCoreRuntimeClient
+import websockets
+import asyncio
+
+async def main():
+    client = AgentCoreRuntimeClient(region="ap-southeast-1")
+
+    # Generate WebSocket connection with OAuth
+    ws_url, headers = client.generate_ws_connection_oauth(
+        runtime_arn=agent_arn,
+        bearer_token=access_token["bearer_token"]
+    )
+
+    async with websockets.connect(ws_url, additional_headers=headers) as ws:
+        await ws.send('{"inputText": "Hello!"}')
+        response = await ws.recv()
+        print(f"Received: {response}")
+
+
 if __name__ == "__main__":
     # Create a session ID for demonstrating session continuity
     session_id = uuid.uuid4()
@@ -150,3 +173,6 @@ if __name__ == "__main__":
     # Run the tests using standard http requests
     for prompt in test_prompts:
         invoke_agentcore_agent(prompt, session_id)
+
+    # Run the tests using websockets
+    # asyncio.run(main())
